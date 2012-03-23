@@ -29,6 +29,7 @@ import edu.washington.cs.knowitall.extractor.mapper.PronounArgumentFilter;
 import edu.washington.cs.knowitall.io.BufferedReaderIterator;
 import edu.washington.cs.knowitall.nlp.ChunkedSentence;
 import edu.washington.cs.knowitall.nlp.ChunkedSentenceReader;
+import edu.washington.cs.knowitall.nlp.SerializedChunkedSentenceReader;
 import edu.washington.cs.knowitall.nlp.extraction.ChunkedBinaryExtraction;
 import edu.washington.cs.knowitall.normalization.BinaryExtractionNormalizer;
 import edu.washington.cs.knowitall.normalization.NormalizedBinaryExtraction;
@@ -58,7 +59,7 @@ public class CommandLineReVerb {
 	private boolean allowUnary = false;
 	private boolean useArgLearner = false;
 	private int minFreq = 20;
-	
+    private boolean chunkedInput = false;
 	
 	private int messageEvery = 1000;
 	private int numSents = 0;
@@ -86,6 +87,7 @@ public class CommandLineReVerb {
 		options.addOption("K", "keepOverlap", false, "Do not merge overlapping relations (Default is to merge.)");
 		options.addOption("U", "allowUnary", false, "Allow relations with a single argument to be output. (Default setting is to disallow unary relations.)");
 		options.addOption("N", "noConstraints", false, "Do not enforce the syntactic and lexical constraints that are part of ReVerb.");
+		options.addOption("c", "chunked-input", false, "Input is already chunked with tab-seperated tokens, postags, and chunk tags.");
 		
 		CommandLineParser parser = new PosixParser();
 		
@@ -146,6 +148,7 @@ public class CommandLineReVerb {
 		
 		stripHtml = params.hasOption("strip-html");
 		filterPronouns = params.hasOption("filter-pronouns");
+        chunkedInput = params.hasOption("chunked-input");
 		
 		minFreq = Integer.parseInt(params.getOptionValue("minFreq", "20"));
 		mergeOverlapRels = !params.hasOption("keepOverlap");
@@ -262,7 +265,7 @@ public class CommandLineReVerb {
 		File f = getNextFile();
 		currentFile = f.getAbsolutePath();
 		BufferedReader in = new BufferedReader(new InputStreamReader(new FileInputStream(f)));
-		ChunkedSentenceReader reader = getSentenceReader(in);
+		Iterable<ChunkedSentence> reader = getSentenceIterable(in);
 		message("Extracting from " + f);
 		extractFromSentReader(reader);
 	}
@@ -270,12 +273,14 @@ public class CommandLineReVerb {
 	private void extractFromStdin() throws IOException, ExtractorException {
 		currentFile = "stdin";
 		BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
-		ChunkedSentenceReader reader = getSentenceReader(in);
+		Iterable<ChunkedSentence> reader = getSentenceIterable(in);
 		extractFromSentReader(reader);
 	}
 	
-	private ChunkedSentenceReader getSentenceReader(BufferedReader in) throws IOException {
-		if (stripHtml) {
+	private Iterable<ChunkedSentence> getSentenceIterable(BufferedReader in) throws IOException {
+        if (chunkedInput) {
+            return new SerializedChunkedSentenceReader(in);
+        } else if (stripHtml) {
 			return DefaultObjects.getDefaultSentenceReaderHtml(in);
 		} else {
 			return DefaultObjects.getDefaultSentenceReader(in);
@@ -291,9 +296,9 @@ public class CommandLineReVerb {
 		}
 	}
 	
-	private void extractFromSentReader(ChunkedSentenceReader reader) throws ExtractorException {
+	private void extractFromSentReader(Iterable<ChunkedSentence> reader) throws ExtractorException {
 		
-		for (ChunkedSentence sent : reader.getSentences()) {
+		for (ChunkedSentence sent : reader) {
 			numSents++;
 			
 			for (ChunkedBinaryExtraction extr : extractor.extract(sent)) {
